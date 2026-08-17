@@ -1,0 +1,7 @@
+{
+  "title": "OpenAnime API",
+  "description": "REST API for a Turkish 4K anime platform.",
+  "icon": "ListVideo",
+  "root": true,
+  "pages": ["index"]
+}

@@ -1,0 +1,435 @@
+---
+title: OpenAnime API
+description: REST API for searching anime, browsing seasons and episodes, and streaming via secure expiring links.
+icon: ListVideo
+---
+
+OpenAnime API is a REST service for searching anime, browsing seasons and episodes, and streaming video through secure expiring links.
+
+- **Base URL:** `https://openanime-api.ewgsta.me`
+- **Format:** JSON (`application/json`)
+- **Version:** `1.0.0`
+
+> No authentication or API key is required for any endpoint. Stream links expire automatically (see [Streaming](#streaming)).
+
+## Response envelope
+
+Every response uses the same envelope, so consumers always know where to look.
+
+### Success
+
+```json
+{
+  "success": true,
+  "data": { },
+  "meta": {
+    "timestamp": "2026-08-17T12:29:10.275Z",
+    "tsc": 1786969750275,
+    "request_id": "f1dc5b37-ec54-4721-86c9-74026bef40bc",
+    "duration_ms": 48
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Anime not found.",
+    "status": 404
+  },
+  "meta": {
+    "timestamp": "2026-08-17T12:30:00.000Z",
+    "tsc": 1786969800000,
+    "request_id": "9e8da77e-6554-4145-ae14-cbec5b43c1f9",
+    "duration_ms": 12
+  }
+}
+```
+
+### `meta` fields
+
+| Field        | Type     | Description                        |
+|--------------|----------|------------------------------------|
+| `timestamp`  | string   | ISO-8601 UTC response time         |
+| `tsc`        | number   | Unix timestamp in milliseconds     |
+| `request_id` | string   | UUIDv4, unique per request         |
+| `duration_ms`| number   | Server processing time in ms       |
+
+## Endpoints
+
+| Method | Path                                                   | Description              |
+|--------|--------------------------------------------------------|--------------------------|
+| GET    | `/health`                                              | Health check            |
+| GET    | `/v1/search?q=:query`                                  | Search the catalog      |
+| GET    | `/v1/anime/:slug`                                      | Series / film details   |
+| GET    | `/v1/anime/:slug/seasons/:season/episodes`             | Paginated episode list  |
+| GET    | `/v1/anime/:slug/seasons/:season/episodes/:episode`    | Single episode          |
+| GET    | `/v1/stream/:token`                                    | Stream media            |
+
+### `GET /health`
+
+Health check. Reports the overall status and the health of the two underlying data sources under generic labels (`catalog`, `media`).
+
+**Response — `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "status": "operational",
+    "version": "openanime-api@1.0.0",
+    "upstreams": { "catalog": true, "media": true }
+  },
+  "meta": { }
+}
+```
+
+| Field        | Type                | Description                                  |
+|--------------|---------------------|----------------------------------------------|
+| `status`     | string              | `operational` \| `degraded` \| `maintenance` |
+| `version`    | string              | API name and version                         |
+| `upstreams`  | object              | Map of `label -> boolean` reachability       |
+
+### `GET /v1/search?q=:query`
+
+Search the catalog.
+
+**Query parameters**
+
+| Name | Type   | Required | Description                                  |
+|------|--------|----------|----------------------------------------------|
+| `q`  | string | Yes      | Search query, 1–200 characters, no control characters |
+
+**Response — `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "count": 10,
+    "results": [
+      {
+        "id": "angel-beats",
+        "title": "Angel Beats!",
+        "title_en": "Angel Beats!",
+        "title_local": "Angel Beats!",
+        "title_native": null,
+        "category": "series",
+        "rating": 7.8
+      }
+    ]
+  },
+  "meta": { }
+}
+```
+
+`data.count` equals `data.results.length`.
+
+`results[]` items:
+
+| Field         | Type               | Description                            |
+|---------------|--------------------|----------------------------------------|
+| `id`          | string             | Opaque identifier — use in `/v1/anime/:slug` |
+| `title`       | string             | Best-available display title           |
+| `title_en`    | string \| null     | English title                          |
+| `title_local` | string \| null     | Local-language title                   |
+| `title_native`| string \| null     | Native (romaji, etc.) title            |
+| `category`    | string             | `series` \| `film` \| `unknown`        |
+| `rating`      | number \| null     | Averaged score                         |
+
+**Errors:** missing/empty `q` → `INVALID_QUERY` (400).
+
+### `GET /v1/anime/:slug`
+
+Full details for a series or film, including its season list.
+
+**Path parameters**
+
+| Name   | Type   | Required | Description                                          |
+|--------|--------|----------|------------------------------------------------------|
+| `slug` | string | Yes      | Identifier from search. Lowercase alphanumerics + hyphens, 1–200 chars |
+
+**Response — `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "angel-beats",
+    "title": "Angel Beats!",
+    "title_en": "Angel Beats!",
+    "title_local": null,
+    "title_native": "Angeru Bīts!",
+    "category": "series",
+    "rating": 8.1,
+    "tags": ["action", "supernatural"],
+    "overview": "A boy wakes up in the afterlife...",
+    "seasons": [
+      { "number": 1, "label": "1. Sezon", "total_episodes": 13, "has_content": true },
+      { "number": 2, "label": "2. Sezon", "total_episodes": 0, "has_content": false }
+    ]
+  },
+  "meta": { }
+}
+```
+
+| Field       | Type                          | Description                     |
+|-------------|-------------------------------|---------------------------------|
+| `id`        | string                        | Identifier                      |
+| `title`/`title_en`/`title_local`/`title_native` | string \| null | Titles in various languages |
+| `category`  | string                        | `series` \| `film` \| `unknown` |
+| `rating`    | number \| null                | Score                           |
+| `tags`      | string[]                      | Genre/tag labels                |
+| `overview`  | string \| null                | Synopsis                        |
+| `seasons`   | array                         | List of season summaries        |
+
+`seasons[]` items:
+
+| Field            | Type    | Description                 |
+|------------------|---------|-----------------------------|
+| `number`         | number  | Season number               |
+| `label`          | string  | Human-readable season label |
+| `total_episodes` | number  | Episode count               |
+| `has_content`    | boolean | Whether episodes exist yet  |
+
+Use `number` + `has_content` to decide which seasons can be browsed.
+
+**Errors:** invalid `slug` → `INVALID_ID` (400); unknown `slug` → `NOT_FOUND` (404).
+
+### `GET /v1/anime/:slug/seasons/:season/episodes`
+
+Paginated list of episodes in a season, each with its stream link.
+
+**Path parameters**
+
+| Name     | Type   | Required | Description              |
+|----------|--------|----------|--------------------------|
+| `slug`   | string | Yes      | Anime identifier         |
+| `season` | number | Yes      | Season number            |
+
+**Query parameters** (both optional, clamped automatically)
+
+| Name       | Type   | Default | Description  |
+|------------|--------|---------|--------------|
+| `page`     | number | `1`     | 1–1000       |
+| `per_page` | number | `20`    | 1–100        |
+
+**Response — `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "series_id": "angel-beats",
+    "season_number": 1,
+    "total": 13,
+    "page": 1,
+    "per_page": 20,
+    "items": [
+      {
+        "number": 1,
+        "title": "Kalkış",
+        "aired_at": "03.04.2010",
+        "translator": "Bağımsız",
+        "available_translators": ["Bağımsız", "NetRip 4K"],
+        "status": "available",
+        "sources": [
+          { "quality": "2160p", "size_bytes": 1746991636, "codec": "mp4", "stream_url": "https://openanime-api.ewgsta.me/v1/stream/wPGsj64d..." }
+        ]
+      }
+    ]
+  },
+  "meta": { }
+}
+```
+
+`items[]` (`EpisodeItem`):
+
+| Field                    | Type               | Description                    |
+|--------------------------|--------------------|--------------------------------|
+| `number`                 | number             | Episode number                 |
+| `title`                  | string \| null     | Episode title                  |
+| `aired_at`               | string \| null     | Air date                       |
+| `translator`             | string \| null     | Active subtitle group          |
+| `available_translators`  | string[]           | Selectable subtitle groups     |
+| `status`                 | string             | `available` \| `pending` \| `unavailable` |
+| `sources`                | array              | Quality variants               |
+
+`sources[]` (`EpisodeSource`):
+
+| Field        | Type           | Description                 |
+|--------------|----------------|-----------------------------|
+| `quality`    | string         | Label, e.g. `1080p`         |
+| `size_bytes` | number \| null | File size                   |
+| `codec`      | string         | Container, e.g. `mp4`       |
+| `stream_url` | string         | Stream link, valid 6 hours  |
+
+**Errors:** invalid `slug` → `INVALID_ID` (400); invalid `season` → `INVALID_SEASON` (400); unavailable → `NOT_FOUND` (404).
+
+### `GET /v1/anime/:slug/seasons/:season/episodes/:episode`
+
+Single episode with its full source list.
+
+**Path parameters**
+
+| Name      | Type   | Required | Description      |
+|-----------|--------|----------|------------------|
+| `slug`    | string | Yes      | Anime identifier |
+| `season`  | number | Yes      | Season number    |
+| `episode` | number | Yes      | Episode number   |
+
+**Response — `200`**
+
+```json
+{
+  "success": true,
+  "data": {
+    "series_id": "angel-beats",
+    "season_number": 1,
+    "episode": { }
+  },
+  "meta": { }
+}
+```
+
+`episode` has the same shape as `EpisodeItem` above.
+
+**Errors:** invalid `slug` → `INVALID_ID` (400); invalid `season` → `INVALID_SEASON` (400); invalid `episode` → `INVALID_EPISODE` (400); unavailable → `NOT_FOUND` (404).
+
+## Streaming
+
+### `GET /v1/stream/:token`
+
+Opens the media file behind an episode's `stream_url`. Works in any player that supports HTTP range requests — seeking and resuming are handled via `Range` headers (responds with `206 Partial Content`).
+
+- A link is valid for **6 hours** after it is issued and can be used multiple times until it expires.
+- Forced re-expiry: request a fresh episode (or list) to get a new link whenever you need one.
+
+**Response — `200`/`206`**
+
+Binary media stream. Example headers:
+
+```
+HTTP/2 206
+content-type: video/mp4
+content-length: 1048576
+content-range: bytes 0-1048575/1746991636
+accept-ranges: bytes
+cache-control: private, max-age=3600
+```
+
+**Errors:**
+
+| Code                  | Status | Description                 |
+|-----------------------|--------|-----------------------------|
+| `TOKEN_MISSING`       | 400    | Link is empty               |
+| `TOKEN_INVALID`       | 403    | Malformed link              |
+| `TOKEN_EXPIRED`       | 403    | Link older than 6 hours     |
+| `UPSTREAM_UNAVAILABLE`| 502    | Media source unavailable    |
+
+> `GET /v1/stream/*` is not rate-limited, so video playback is never interrupted.
+
+## Error codes
+
+| Code                  | Status | Meaning                              |
+|-----------------------|--------|--------------------------------------|
+| `INVALID_QUERY`       | 400    | Missing/invalid `q` on `/v1/search`  |
+| `INVALID_ID`          | 400    | Malformed `:slug`                    |
+| `INVALID_SEASON`      | 400    | Malformed season number              |
+| `INVALID_EPISODE`     | 400    | Malformed episode number             |
+| `TOKEN_MISSING`       | 400    | `/v1/stream/:token` without a token  |
+| `TOKEN_INVALID`       | 403    | Forged, malformed or invalid link    |
+| `TOKEN_EXPIRED`       | 403    | Link older than 6 hours              |
+| `NOT_FOUND`           | 404    | Route or resource does not exist     |
+| `RATE_LIMITED`        | 429    | Too many requests, see [Rate limiting](#rate-limiting) |
+| `INTERNAL_ERROR`      | 500    | Unhandled server error               |
+| `UPSTREAM_UNAVAILABLE`| 502    | Media source could not be reached    |
+| `API_DISABLED`        | 503    | API is temporarily switched off      |
+
+## Rate limiting
+
+Applies per IP (`CF-Connecting-IP`) to `/v1/search`, `/v1/anime/*` and `/health` (default **60 requests / 60 seconds**). `/v1/stream/*` is exempt.
+
+Every limited response carries the current budget:
+
+| Header                  | Description                          |
+|-------------------------|--------------------------------------|
+| `X-RateLimit-Limit`     | Max requests per window              |
+| `X-RateLimit-Remaining` | Requests left in the current window  |
+| `X-RateLimit-Reset`     | Unix timestamp (seconds) when the window resets |
+
+When exhausted:
+
+```http
+HTTP/1.1 429
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1786969800
+```
+
+```json
+{
+  "success": false,
+  "error": { "code": "RATE_LIMITED", "message": "Too many requests. Please slow down.", "status": 429 },
+  "meta": { }
+}
+```
+
+Retry after `X-RateLimit-Reset`.
+
+## CORS
+
+CORS is **disabled by default** — browser-based clients must be allowlisted by the API operator. When enabled, responses include `Access-Control-Allow-Origin` for allowed origins, and preflight `OPTIONS` is answered with `204`.
+
+## Pagination
+
+Episode lists use `page` (default `1`, max `1000`) and `per_page` (default `20`, max `100`). Both are silently clamped to their valid ranges. `data.total` is the full episode count regardless of pagination.
+
+## Examples
+
+Search:
+
+```bash
+curl "https://openanime-api.ewgsta.me/v1/search?q=angel%20beats"
+```
+
+Series details:
+
+```bash
+curl "https://openanime-api.ewgsta.me/v1/anime/angel-beats"
+```
+
+Episode list (page 2, 10 per page):
+
+```bash
+curl "https://openanime-api.ewgsta.me/v1/anime/angel-beats/seasons/1/episodes?page=2&per_page=10"
+```
+
+Single episode:
+
+```bash
+curl "https://openanime-api.ewgsta.me/v1/anime/angel-beats/seasons/1/episodes/1"
+```
+
+Stream the first 1 MB of an episode to a file:
+
+```bash
+TOKEN=$(curl -s ".../episodes/1" | jq -r '.data.episode.sources[0].stream_url')
+curl -L "$TOKEN" -o episode.mp4
+```
+
+Resume / seek (Range):
+
+```bash
+curl -L -r 1048576- "$TOKEN" -o episode_part2.mp4
+```
+
+Health:
+
+```bash
+curl "https://openanime-api.ewgsta.me/health"
+```
