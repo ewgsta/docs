@@ -1,0 +1,7 @@
+{
+  "title": "Fumadocs UI",
+  "description": "Arayüz bileşenleri",
+  "icon": "Layout",
+  "root": true,
+  "pages": ["index"]
+}

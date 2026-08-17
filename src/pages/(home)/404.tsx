@@ -1,1 +1,5 @@
-export { DefaultNotFound as default } from 'fumadocs-ui/layouts/home/not-found';
+import { DefaultNotFound } from 'fumadocs-ui/layouts/home/not-found';
+
+export default function NotFoundPage() {
+  return <DefaultNotFound />;
+}
