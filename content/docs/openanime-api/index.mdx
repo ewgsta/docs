@@ -72,7 +72,7 @@ Every response uses the same envelope, so consumers always know where to look.
 
 ### `GET /health`
 
-Health check. Reports the overall status and the health of the two underlying data sources under generic labels (`catalog`, `media`).
+Health check. Reports the overall status and the health of the two underlying data sources under generic labels (`openanime`, `scraper-worker`).
 
 **Response — `200`**
 
@@ -82,7 +82,7 @@ Health check. Reports the overall status and the health of the two underlying da
   "data": {
     "status": "operational",
     "version": "openanime-api@1.0.0",
-    "upstreams": { "catalog": true, "media": true }
+    "upstreams": { "openanime": true, "scraper-worker": true }
   },
   "meta": { }
 }
